@@ -20,9 +20,22 @@ local targetPart = workspace:WaitForChild(TARGET_NAME)
 local dialogueGui = PlayerGui:WaitForChild("DialogueGUI")
 local dialogueFrame = dialogueGui:WaitForChild("Frame")
 local speakerLabel = dialogueFrame:WaitForChild("SpeakerLabel") 
+local speakerLabel = dialogueFrame:WaitForChild("SpeakerLabel") 
 local textLabel = dialogueFrame:WaitForChild("TextLabel") 
 local promptIndicator = dialogueFrame:WaitForChild("PromptIndicator")
 
+-- 1. 背景框居中
+dialogueFrame.AnchorPoint = Vector2.new(0.5, 1)
+dialogueFrame.Position = UDim2.new(0.5, 0, 0.8, 0)
+
+-- 2. 文字标签修复
+if textLabel then
+	textLabel.AnchorPoint = Vector2.new(0.5, 0.5)
+	textLabel.Position = UDim2.new(0.5, 0, 0.5, 0) -- 放在正中心
+	textLabel.Size = UDim2.new(0.95, 0, 0.7, 0)    -- 占满宽度，高度留一点给顶部的标题
+	textLabel.TextXAlignment = Enum.TextXAlignment.Center -- 文字强制居中
+	textLabel.TextWrapped = true -- 自动换行
+end
 -- Objective GUI 组件
 local objectiveGui = PlayerGui:WaitForChild("ObjectiveGUI")
 local objectiveTextLabel = objectiveGui:WaitForChild("TextLabel") 

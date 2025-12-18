@@ -9,7 +9,7 @@ local dataStore = DataStoreService:GetDataStore(DATA_STORE_NAME)
 
 -- !!! 配置: 默认数据 (新玩家) !!!
 local DEFAULT_DATA = {
-	Biomass = 5, -- 新玩家初始生物质 (用于测试)
+	Biomass = 0, -- 新玩家初始生物质 (用于测试)
 	MTC = 0      -- 新玩家初始元币
 }
 

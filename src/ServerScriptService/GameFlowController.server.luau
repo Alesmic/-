@@ -8,10 +8,13 @@ local VOICE_ASSET_ID = "rbxassetid://116952830538871"         -- "你好，a。�
 local SECOND_VOICE_ASSET_ID = "rbxassetid://74061505906890"  -- "欢迎来到您的新实验室..."
 
 -- !!! 事件和对象引用 !!!
+-- 1. [新增] 引用 TutorialEvent (如果不存在则等待)
+local TutorialEvent = ReplicatedStorage:WaitForChild("TutorialEvent")
+
 local triggerEvent = ReplicatedStorage:WaitForChild("TriggerDialogueEvent")
 local secondTriggerEvent = ReplicatedStorage:WaitForChild("SecondDialogueEvent")
 local toggleWaypointEvent = ReplicatedStorage:WaitForChild("ToggleWaypointEvent")
-local sellBiomassEvent = ReplicatedStorage:WaitForChild("SellBiomassEvent") -- 新增
+local sellBiomassEvent = ReplicatedStorage:WaitForChild("SellBiomassEvent")
 local labAnchor = workspace:WaitForChild("LabTeleportAnchor") 
 
 -- !!! 可调整项 !!!
@@ -20,14 +23,14 @@ local SECOND_VO_DURATION = 7.0 -- 第二次语音播放时长
 local MTC_PER_RECYCLE = 100 -- 每次回收获得的元币
 
 
--- [函数 1: 第二次对话和高亮路标]
+-- [函数 1: 第二次对话和高亮路标] (到达实验室后触发)
 local function startSecondDialogue(player)
-	print("玩家已到达，准备触发实验室欢迎语音...")
+	print("触发第二次对话计时器...")
 
-	-- 1. 稍微等待一下，让客户端加载周围环境 (可选，0.5到1秒即可)
-	task.wait(1) 
+	-- 1. 等待 1.5 秒 (传送后延迟)
+	task.wait(1.5)
 
-	-- 2. 服务器播放“欢迎”语音
+	-- 2. 服务器播放第二次语音
 	local sound = Instance.new("Sound")
 	sound.SoundId = SECOND_VOICE_ASSET_ID
 	local character = player.Character
@@ -37,34 +40,50 @@ local function startSecondDialogue(player)
 		Debris:AddItem(sound, SECOND_VO_DURATION + 1)
 	end
 
-	-- 3. 触发客户端事件：显示“欢迎来到新实验室”字幕和∇提示符
+	-- 3. 触发第二次对话事件，告知客户端显示 UI 和提示符
 	secondTriggerEvent:FireClient(player)
 
-	print("已触发欢迎对话，等待玩家点击。")
+	print("已触发第二次对话，等待客户端点击结束。")
 
-	-- 4. 开启路标 (等待语音播放完毕后)
-	task.wait(SECOND_VO_DURATION)
+	-- 4. 延迟开启路标 (假设玩家在语音播放完毕后 3 秒内点击)
+	task.wait(SECOND_VO_DURATION + 3)
 
-	-- 5. 开启回收箱路标
+	-- 5. 开启路标：通知 flash 脚本在客户端显示回收箱箭头
 	toggleWaypointEvent:FireClient(player, true) 
 	print("回收箱路标已开启。")
 end
 
 
--- [函数 2: 初始对话和传送逻辑]
+-- [函数 2: 初始对话和传送逻辑] (被调用时才执行)
 local function startLabObjective(player)
+	print(player.Name .. " 请求进入实验室流程...")
+	local playerId = player.DisplayName
+
+	-- 播放第一次语音
+	local sound = Instance.new("Sound")
+	sound.SoundId = VOICE_ASSET_ID
+
 	local character = player.Character
-
-	-- 确保角色存在
 	if character and character:FindFirstChild("HumanoidRootPart") then
+		sound.Parent = character.HumanoidRootPart
+		sound:Play()
+		Debris:AddItem(sound, VO_DURATION + 1)
+	end
 
-		-- 1. 【核心修改】立即传送玩家到实验室锚点
-		local targetCFrame = labAnchor.CFrame + Vector3.new(0, 2, 0)
+	-- 通知客户端显示第一次对话
+	triggerEvent:FireClient(player, playerId)
+
+	-- 等待语音播放完毕
+	task.wait(VO_DURATION)
+
+	-- 传送
+	if character and character:FindFirstChild("HumanoidRootPart") then
+		-- +Vector3.new(0, 3, 0) 防止卡在地里
+		local targetCFrame = labAnchor.CFrame + Vector3.new(0, 3, 0)
 		character:PivotTo(targetCFrame)
-		print(player.Name .. " 已传送到实验室。")
+		print("玩家已传送。")
 
-		-- 2. 【核心修改】传送完成后，直接启动欢迎流程
-		-- 我们跳过了原本的“第一段对话”，因为玩家已经被强制传送到目的地了
+		-- 在传送完成后，立即启动第二次对话流程
 		startSecondDialogue(player)
 	end
 end
@@ -87,18 +106,20 @@ local function handleSellBiomass(player)
 
 		print(player.Name .. " 成功出售，获得 " .. earnedMTC .. " MTC。")
 
-		-- 可选：出售完成后关闭路标
+		-- 出售完成后关闭路标
 		toggleWaypointEvent:FireClient(player, false)
+
+		-- 触发下一个目标 (Target 4)
+		task.wait(1)
+		TutorialEvent:FireClient(player, "StartObjective4")
 	end
 end
 
--- [触发逻辑]
-Players.PlayerAdded:Connect(function(player)
-	player.CharacterAdded:Connect(function(character)
-		-- 玩家进入游戏 2 秒后直接传送并开始介绍
-		task.wait(2)
-		startLabObjective(player)
-	end)
+-- [修改关键点]：删除原有的 PlayerAdded 自动传送，改为监听事件
+TutorialEvent.OnServerEvent:Connect(function(player, action)
+	if action == "MoveToLab" then
+		startLabObjective(player) -- 只有收到客户端的 MoveToLab 信号才传送
+	end
 end)
 
 -- 监听客户端的出售请求
