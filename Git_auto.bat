@@ -1,42 +1,51 @@
 @echo off
+setlocal EnableDelayedExpansion
 :: ==========================================
-::  GIT 极简稳定版 (无颜色，防闪退)
+::  GIT 智能提交版 (中文环境优化)
 :: ==========================================
 
-echo [1/5] 正在检查运行环境...
-echo 当前运行目录: %cd%
+echo [1/4] 检查状态...
+git status --short
 
-:: 检查是否安装了 git
-git --version
-if %errorlevel% neq 0 (
-    echo [错误] 电脑上没找到 git 命令！请先安装 Git。
-    pause
-    exit
-)
+:: 检查是否有文件变动
+for /f "delims=" %%i in ('git status --short') do set "hasChanges=1"
 
-echo.
-echo [2/5] 正在添加到暂存区 (git add)...
-git add .
-
-echo.
-echo [3/5] 提交代码
-set /p "msg=请输入提交备注 (直接回车默认使用 Auto update): "
-if "%msg%"=="" set "msg=Auto update"
-
-echo 正在提交: "%msg%"
-git commit -m "%msg%"
-
-echo.
-echo [4/5] 准备推送到远程仓库...
-set /p "shouldPush=是否推送? (输入 y 确认，其他键跳过): "
-if /i "%shouldPush%"=="y" (
-    echo 正在推送 (git push)...
-    git push
+if defined hasChanges (
+    echo.
+    echo [2/4] 检测到文件变动，正在添加...
+    git add .
+    
+    echo.
+    echo [3/4] 提交到本地...
+    set /p "msg=请输入提交备注 (回车默认 'Auto Update'): "
+    if "!msg!"=="" set "msg=Auto Update"
+    git commit -m "!msg!"
 ) else (
-    echo 已跳过推送。
+    echo.
+    echo [跳过] 没有检测到新修改的文件，跳过提交步骤。
 )
 
 echo.
-echo [5/5] 脚本运行结束。
-echo ==========================================
+echo [4/4] 检查远程同步状态...
+:: 检查是否有未推送的提交
+git status | findstr "ahead" >nul
+if %errorlevel% equ 0 (
+    echo.
+    echo =========================================
+    echo  检测到本地有代码尚未推送到服务器！
+    echo =========================================
+    set /p "pushChoice=是否立即推送? (输入 y 确认): "
+    if /i "!pushChoice!"=="y" (
+        echo 正在推送...
+        git push
+        echo 推送完成！
+    ) else (
+        echo 已取消推送。
+    )
+) else (
+    echo.
+    echo 本地代码已是最新，无需推送。
+)
+
+echo.
 pause
