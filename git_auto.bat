@@ -2,14 +2,14 @@
 setlocal EnableExtensions EnableDelayedExpansion
 
 :: =========================================================
-::  GIT 自动化工具 - 中文完美支持版 (UTF-8)
-::  修复了中文备注乱码问题
+::  GIT 自动化工具 - 线性逻辑防闪退版
+::  核心修复：移除嵌套括号，防止 git push 崩溃
 :: =========================================================
 
-:: 1. 强制切换到 UTF-8 编码 (解决 Git 中文乱码的核心)
+:: 1. 强制 UTF-8 (支持中文)
 chcp 65001 >nul
 
-:: 2. 生成颜色代码
+:: 2. 生成颜色
 for /F "tokens=1,2 delims=#" %%a in ('"prompt #$H#$E# & echo on & for %%b in (1) do rem"') do (
   set "ESC=%%b"
 )
@@ -24,11 +24,11 @@ set "RED=%ESC%[31m"
 set "BLUE=%ESC%[34m"
 
 :: 设置窗口
-title Git Pro [CN] - UTF8 Mode
+title Git Pro [CN] - Stable Mode
 mode con: cols=90 lines=30
 
 :: ---------------------------------------------------------
-:: 3. 经典界面
+:: 3. 界面加载
 :: ---------------------------------------------------------
 cls
 echo.
@@ -44,7 +44,6 @@ echo          %MAGENTA%Dev and Design by: xyhyxu%RESET%
 echo.
 
 echo  %BLUE%   [系统初始化] 正在加载模块...%RESET%
-:: 使用 ping 做延时，兼容性最好
 ping 127.0.0.1 -n 2 >nul
 echo  %GREEN%   [OK] 就绪%RESET%
 echo.
@@ -66,7 +65,7 @@ if not exist .git (
 )
 
 :: ---------------------------------------------------------
-:: 5. 状态扫描
+:: 5. 状态扫描 & 提交逻辑
 :: ---------------------------------------------------------
 echo  %BLUE%[%time:~0,8%]%RESET% %BOLD%正在扫描工作区...%RESET%
 
@@ -78,9 +77,10 @@ echo  %CYAN%[信息]%RESET% 当前分支: %GREEN%!BRANCH!%RESET%
 set "HAS_CHANGES=0"
 for /f "delims=" %%i in ('git status --short') do set "HAS_CHANGES=1"
 
-if "!HAS_CHANGES!"=="1" goto :FoundChanges
-goto :NoChanges
+:: 如果没有变动，直接跳去检查推送
+if "!HAS_CHANGES!"=="0" goto :NoChanges
 
+:: --- 有变动，执行添加和提交 ---
 :FoundChanges
     echo  %CYAN%[信息]%RESET% 检测到文件变动，准备提交...
     echo.
@@ -98,10 +98,10 @@ goto :NoChanges
     if "!MSG!"=="" set "MSG=Update by xyhyxu [%date%]"
     
     echo.
-    :: 再次确认编码，防止输入法干扰
-    chcp 65001 >nul
     echo  %BLUE%[%time:~0,8%]%RESET% %BOLD%正在提交: "!MSG!"%RESET%
     git commit -m "!MSG!"
+    
+    :: 提交完后，去检查推送
     goto :CheckPush
 
 :NoChanges
@@ -110,16 +110,17 @@ goto :NoChanges
     goto :CheckPush
 
 :: ---------------------------------------------------------
-:: 6. 推送检查
+:: 6. 推送检查 (线性逻辑，防闪退核心)
 :: ---------------------------------------------------------
 :CheckPush
 echo.
 echo  %BLUE%[%time:~0,8%]%RESET% %BOLD%检查远程同步状态...%RESET%
 
 git status | findstr "ahead" >nul
-if %errorlevel% equ 0 goto :NeedPush
-goto :UpToDate
+:: 如果没找到 ahead，说明不需要推送，跳转结束
+if %errorlevel% neq 0 goto :UpToDate
 
+:: --- 需要推送 ---
 :NeedPush
     echo.
     echo  %RED%[提醒] 本地有代码尚未推送到服务器！%RESET%
@@ -128,21 +129,25 @@ goto :UpToDate
     set "PUSH_CHOICE="
     set /p "PUSH_CHOICE=%YELLOW%[操作] 是否立即推送? (输入 Y 确认): %RESET%"
     
-    if /i "!PUSH_CHOICE!"=="y" (
+    :: 如果用户不输入 Y，跳转结束
+    if /i not "!PUSH_CHOICE!"=="y" goto :SkipPush
+
+    :: --- 执行推送 (这是独立的代码块，不会闪退) ---
+    echo.
+    echo  %BLUE%[%time:~0,8%]%RESET% %BOLD%正在推送 (git push)...%RESET%
+    git push
+    
+    if %errorlevel% equ 0 (
         echo.
-        echo  %BLUE%[%time:~0,8%]%RESET% %BOLD%正在推送 (git push)...%RESET%
-        git push
-        
-        if !errorlevel! equ 0 (
-            echo.
-            echo  %GREEN%[成功] 代码已成功同步到远程仓库！%RESET%
-        ) else (
-            echo.
-            echo  %RED%[失败] 推送出错了，请检查网络。%RESET%
-        )
+        echo  %GREEN%[成功] 代码已成功同步到远程仓库！%RESET%
     ) else (
-        echo  [信息] 已跳过推送。
+        echo.
+        echo  %RED%[失败] 推送出错了，请检查网络。%RESET%
     )
+    goto :End
+
+:SkipPush
+    echo  [信息] 已跳过推送。
     goto :End
 
 :UpToDate
