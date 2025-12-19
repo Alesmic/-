@@ -46,7 +46,7 @@ Players.PlayerAdded:Connect(function(player)
 			local inventory = player:FindFirstChild("Inventory")
 			if inventory then
 				-- 从 GameConfig 中读取教学 Elite Zombie 的掉落配置
-				local dropInfo = GameConfig.Mobs["Elite Zombie"].Drops [cite: 45]
+				local dropInfo = GameConfig.Mobs["Elite Zombie"].Drops
 
 				for _, drop in ipairs(dropInfo) do
 					local item = inventory:FindFirstChild(drop.ItemName)

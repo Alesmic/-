@@ -28,6 +28,7 @@ end)
 
 script.Parent.BowRE.OnClientEvent:Connect(function(arrow, charge)
 	
+	if not arrow then return end -- 【新增】防止 arrow 为 nil 时报错
 	arrow:Destroy()
 	
 	local newArrow = script.Parent.Arrow:Clone()

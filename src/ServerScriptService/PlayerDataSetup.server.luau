@@ -1,16 +1,16 @@
--- Script: PlayerDataSetup (在 ServerScriptService 中，现在处理存档/读档)
+-- Script: PlayerDataSetup (在 ServerScriptService 中)
 local Players = game:GetService("Players")
 local DataStoreService = game:GetService("DataStoreService")
 
 -- !!! 配置: 数据存储名 !!!
--- 每次修改数据结构时，建议更改版本号，以防数据冲突。
-local DATA_STORE_NAME = "Player_Biomass_MTC_V2" 
+local DATA_STORE_NAME = "Player_Data_V3_Exp" -- 建议更新版本号以防数据冲突
 local dataStore = DataStoreService:GetDataStore(DATA_STORE_NAME)
 
--- !!! 配置: 默认数据 (新玩家) !!!
+-- !!! 配置: 默认数据 !!!
 local DEFAULT_DATA = {
-	Biomass = 0, -- 新玩家初始生物质 (用于测试)
-	MTC = 0      -- 新玩家初始元币
+	Biomass = 0, 
+	MTC = 0,
+	Exp = 0 -- [新增] 默认经验值
 }
 
 -- [函数 1: 数据加载和Leaderstats设置]
@@ -19,76 +19,69 @@ local function loadPlayerData(player)
 	leaderstats.Name = "leaderstats" 
 	leaderstats.Parent = player
 
+	-- 1. 生物质
 	local biomassStat = Instance.new("IntValue")
 	biomassStat.Name = "Biomass" 
 	biomassStat.Parent = leaderstats
 
+	-- 2. 元币 (MTC)
 	local mtcStat = Instance.new("IntValue")
 	mtcStat.Name = "MTC" 
 	mtcStat.Parent = leaderstats
 
+	-- 3. [新增] 经验值 (Exp)
+	local expStat = Instance.new("IntValue")
+	expStat.Name = "Exp" -- 名字改为 Exp
+	expStat.Parent = leaderstats
+
 	local userId = "User_" .. player.UserId
 	local loadedData
 
-	-- 尝试加载数据
 	local success, err = pcall(function()
 		loadedData = dataStore:GetAsync(userId)
 	end)
 
 	if success and loadedData then
-		-- 加载成功：使用存档数据
 		biomassStat.Value = loadedData.Biomass or DEFAULT_DATA.Biomass
 		mtcStat.Value = loadedData.MTC or DEFAULT_DATA.MTC
+		expStat.Value = loadedData.Exp or DEFAULT_DATA.Exp -- 读取 Exp
 		print(player.Name .. "：数据加载成功。")
 	else
-		-- 加载失败或无存档：使用默认数据
 		biomassStat.Value = DEFAULT_DATA.Biomass
 		mtcStat.Value = DEFAULT_DATA.MTC
-		print(player.Name .. "：无存档或加载失败，使用默认数据。")
-		if not success then
-			warn("数据加载时出现错误：" .. err)
+		expStat.Value = DEFAULT_DATA.Exp
+		print(player.Name .. "：无存档，使用默认数据。")
+	end
+end
+
+-- [函数 2: 退出时自动保存]
+local function savePlayerData(player)
+	local leaderstats = player:FindFirstChild("leaderstats")
+	if not leaderstats then return end
+
+	local biomassStat = leaderstats:FindFirstChild("Biomass")
+	local mtcStat = leaderstats:FindFirstChild("MTC")
+	local expStat = leaderstats:FindFirstChild("Exp") -- 获取 Exp
+
+	if biomassStat and mtcStat and expStat then
+		local dataToSave = {
+			Biomass = biomassStat.Value,
+			MTC = mtcStat.Value,
+			Exp = expStat.Value -- 保存 Exp
+		}
+
+		local userId = "User_" .. player.UserId
+		local success, err = pcall(function()
+			dataStore:SetAsync(userId, dataToSave)
+		end)
+
+		if success then
+			print(player.Name .. "：数据保存成功。")
+		else
+			warn(player.Name .. "：数据保存失败！" .. tostring(err))
 		end
 	end
 end
 
--- [函数 2: 退出时自动保存数据]
-local function savePlayerData(player)
-	local leaderstats = player:FindFirstChild("leaderstats")
-
-	-- 确保 leaderstats 存在
-	if not leaderstats then
-		warn("退出时找不到 Leaderstats，无法保存：" .. player.Name)
-		return
-	end
-
-	local biomassStat = leaderstats:FindFirstChild("Biomass")
-	local mtcStat = leaderstats:FindFirstChild("MTC")
-
-	-- 确保两个统计数据都存在
-	if not biomassStat or not mtcStat then
-		warn("退出时找不到 Biomass 或 MTC，无法保存：" .. player.Name)
-		return
-	end
-
-	local dataToSave = {
-		Biomass = biomassStat.Value,
-		MTC = mtcStat.Value
-	}
-
-	local userId = "User_" .. player.UserId
-
-	-- 尝试保存数据
-	local success, err = pcall(function()
-		dataStore:SetAsync(userId, dataToSave)
-	end)
-
-	if success then
-		print(player.Name .. "：数据保存成功。")
-	else
-		warn(player.Name .. "：数据保存失败！错误：" .. err)
-	end
-end
-
--- [连接事件]
 Players.PlayerAdded:Connect(loadPlayerData)
 Players.PlayerRemoving:Connect(savePlayerData)

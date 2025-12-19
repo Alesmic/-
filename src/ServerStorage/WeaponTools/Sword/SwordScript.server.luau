@@ -1,10 +1,20 @@
---Rescripted by Luckymaxer
---EUROCOW WAS HERE BECAUSE I MADE THE PARTICLES AND THEREFORE THIS ENTIRE SWORD PRETTY AND LOOK PRETTY WORDS AND I'D LIKE TO DEDICATE THIS TO MY FRIENDS AND HI LUCKYMAXER PLS FIX SFOTH SWORDS TY LOVE Y'ALl
---Updated for R15 avatars by StarWars
---Re-updated by TakeoHonorable
+-- SwordScript.server.luau
+local Tool = script.Parent
+local Handle = Tool:WaitForChild("Handle")
+local Players = game:GetService("Players")
+local Debris = game:GetService("Debris")
+local RunService = game:GetService("RunService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
-Tool = script.Parent
-Handle = Tool:WaitForChild("Handle")
+-- [新增] 引入 GameConfig
+local GameConfig = require(ReplicatedStorage:WaitForChild("GameConfig"))
+
+-- [新增] 读取 Sword 配置
+local SwordStats = GameConfig.Weapons["Sword"] or {
+	BaseDamage = 10,
+	SlashDamage = 20,
+	LungeDamage = 40
+}
 
 function Create(ty)
 	return function(data)
@@ -22,14 +32,11 @@ end
 
 local BaseUrl = "rbxassetid://"
 
-Players = game:GetService("Players")
-Debris = game:GetService("Debris")
-RunService = game:GetService("RunService")
-
+-- [修改] 使用配置中的伤害值
 DamageValues = {
-	BaseDamage = 5,
-	SlashDamage = 10,
-	LungeDamage = 30
+	BaseDamage = SwordStats.BaseDamage,
+	SlashDamage = SwordStats.SlashDamage,
+	LungeDamage = SwordStats.LungeDamage
 }
 
 --For R15 avatars
@@ -112,7 +119,6 @@ function Blow(Hit)
 	humanoid:TakeDamage(Damage)	
 end
 
-
 function Attack()
 	Damage = DamageValues.SlashDamage
 	Sounds.Slash:Play()
@@ -135,9 +141,8 @@ end
 
 function Lunge()
 	Damage = DamageValues.LungeDamage
-
 	Sounds.Lunge:Play()
-	
+
 	if Humanoid then
 		if Humanoid.RigType == Enum.HumanoidRigType.R6 then
 			local Anim = Instance.new("StringValue")
@@ -152,16 +157,7 @@ function Lunge()
 			end
 		end
 	end	
-	--[[
-	if CheckIfAlive() then
-		local Force = Instance.new("BodyVelocity")
-		Force.velocity = Vector3.new(0, 10, 0) 
-		Force.maxForce = Vector3.new(0, 4000, 0)
-		Debris:AddItem(Force, 0.4)
-		Force.Parent = Torso
-	end
-	]]
-	
+
 	wait(0.2)
 	Tool.Grip = Grips.Out
 	wait(0.6)
@@ -185,14 +181,14 @@ function Activated()
 		Attack()
 	end
 	LastAttack = Tick
-	--wait(0.5)
 	Damage = DamageValues.BaseDamage
+
 	local SlashAnim = (Tool:FindFirstChild("R15Slash") or Create("Animation"){
 		Name = "R15Slash",
 		AnimationId = BaseUrl .. Animations.R15Slash,
 		Parent = Tool
 	})
-	
+
 	local LungeAnim = (Tool:FindFirstChild("R15Lunge") or Create("Animation"){
 		Name = "R15Lunge",
 		AnimationId = BaseUrl .. Animations.R15Lunge,

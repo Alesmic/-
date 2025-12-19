@@ -6,14 +6,57 @@ local ContentProvider = game:GetService("ContentProvider")
 
 local player = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
-local TutorialEvent = ReplicatedStorage:WaitForChild("TutorialEvent")
+
+-- 引入配置
+local GameConfigModule = ReplicatedStorage:WaitForChild("GameConfig", 10)
+if not GameConfigModule then warn("⚠️ 警告：未找到 GameConfig，部分功能可能失效") end
+local GameConfig = require(GameConfigModule)
+
+-- 安全获取事件
+local TutorialEvent = ReplicatedStorage:WaitForChild("TutorialEvent", 30)
+if not TutorialEvent then warn("❌ 严重错误：等待 TutorialEvent 超时！") end
 
 -- 🔥 调试开关
 local TEST_MODE = false 
 
+-- ================= 变量定义 (关键修复) =================
+local lootCount = 0  -- 【修复】必须初始化为 0
+local TOTAL_LOOT_NEEDED = 5 -- 默认值
+
+-- 尝试从配置读取总数
+if GameConfig and GameConfig.GetTotalLootCount then
+	TOTAL_LOOT_NEEDED = GameConfig.GetTotalLootCount()
+elseif GameConfig and GameConfig.Mobs and GameConfig.Mobs["Elite Zombie"] then
+	-- 如果没有辅助函数，手动计算 (根据你的 Config 结构)
+	local drops = GameConfig.Mobs["Elite Zombie"].Drops
+	local sum = 0
+	if drops then
+		for _, d in ipairs(drops) do sum = sum + d.Amount end
+	end
+	if sum > 0 then TOTAL_LOOT_NEEDED = sum end
+end
+
+local objective3Started = false 
+local weaponConnections = {}
+local isSelecting = false
+local SelectedWeaponIndex = 0
+
+local WeaponData = {
+	[1] = { Name = "Knight's Sword", Desc = "Speed: Medium\nDamage: Balanced", Id = "Sword" },
+	[2] = { Name = "Heavy Axe",      Desc = "Speed: Slow\nDamage: High",     Id = "Axe" },
+	[3] = { Name = "Elven Bow",      Desc = "Speed: Fast\nDamage: Low",      Id = "Bow" }
+}
+
+local AUDIO_CLICK = "rbxassetid://12221967"
+local AUDIO_RETURN_LAB = "rbxassetid://116952830538871"
+local AUDIO_VO_2_2 = "rbxassetid://9114704332"
+local AUDIO_VO_4_1 = "rbxassetid://0" 
+
+local SoundPlayer = Instance.new("Sound")
+SoundPlayer.Name = "StorySoundPlayer"
+SoundPlayer.Parent = script
+
 -- ================= 1. UI 引用 (动态获取) =================
--- 我们不再在脚本开头一次性死锁 UI，而是创建一个函数来动态获取
--- 这样即使玩家重生，UI 重置，脚本也能找到新的 UI
 local function GetGameGui()
 	return playerGui:FindFirstChild("GameGui")
 end
@@ -21,10 +64,9 @@ end
 local function GetUIElement(name, parent)
 	if not parent then parent = GetGameGui() end
 	if not parent then return nil end
-	return parent:FindFirstChild(name, true) -- true 表示递归查找，防止层级变动找不到
+	return parent:FindFirstChild(name, true) 
 end
 
--- 自动创建缺失 UI 的辅助函数
 local function EnsureUI()
 	local gui = GetGameGui()
 	if not gui then return end
@@ -61,101 +103,63 @@ local function EnsureUI()
 	end
 end
 
--- ================= 2. NPC 与按键 =================
-print("客户端：正在连接 NPC...")
-local NPC = workspace:WaitForChild("BattlemasterNPC", 10)
-if not NPC then warn("⚠️ 未找到 BattlemasterNPC！") end
+-- ================= ✨ 特效与弹窗 ✨ =================
 
-local RootPart = NPC and NPC:WaitForChild("HumanoidRootPart")
-local ProximityPrompt = RootPart and RootPart:WaitForChild("ProximityPrompt", 5)
+local function ShowLootNotification(itemName)
+	local gui = GetGameGui()
+	if not gui then return end
 
-if RootPart and not ProximityPrompt then
-	warn("⚠️ 自动创建按键...")
-	ProximityPrompt = Instance.new("ProximityPrompt")
-	ProximityPrompt.Parent = RootPart
+	local notifyFrame = gui:FindFirstChild("NotifyContainer")
+	if not notifyFrame then
+		notifyFrame = Instance.new("Frame")
+		notifyFrame.Name = "NotifyContainer"
+		notifyFrame.Size = UDim2.new(0, 200, 0, 300)
+		notifyFrame.Position = UDim2.new(1, -220, 1, -320)
+		notifyFrame.BackgroundTransparency = 1
+		notifyFrame.Parent = gui
+
+		local layout = Instance.new("UIListLayout")
+		layout.Parent = notifyFrame
+		layout.SortOrder = Enum.SortOrder.LayoutOrder
+		layout.VerticalAlignment = Enum.VerticalAlignment.Bottom
+		layout.Padding = UDim.new(0, 5)
+	end
+
+	local label = Instance.new("TextLabel")
+	label.Size = UDim2.new(1, 0, 0, 40)
+	label.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+	label.BackgroundTransparency = 0.5
+	label.TextColor3 = Color3.fromRGB(255, 255, 255)
+	label.TextSize = 18
+	label.Font = Enum.Font.GothamBold
+	label.Text = "+1 " .. tostring(itemName)
+	label.Parent = notifyFrame
+
+	task.delay(2, function()
+		if label and label.Parent then
+			local tween = TweenService:Create(label, TweenInfo.new(1), {TextTransparency = 1, BackgroundTransparency = 1})
+			tween:Play()
+			tween.Completed:Connect(function() label:Destroy() end)
+		end
+	end)
 end
 
-if ProximityPrompt then
-	ProximityPrompt.ObjectText = "Battlemaster"
-	ProximityPrompt.ActionText = "Train"
-	ProximityPrompt.KeyboardKeyCode = Enum.KeyCode.E
-	ProximityPrompt.RequiresLineOfSight = false 
-	ProximityPrompt.MaxActivationDistance = 15
-	ProximityPrompt.Enabled = false 
-end
-
--- ================= 3. 音频与数据 =================
-local SoundPlayer = Instance.new("Sound")
-SoundPlayer.Name = "StorySoundPlayer"
-SoundPlayer.Parent = script
-
-local AUDIO_CLICK = "rbxassetid://12221967"
-local AUDIO_VO_1_1 = "rbxassetid://117374101600882" 
-local AUDIO_VO_1_2 = "rbxassetid://89718167229984" 
-local AUDIO_VO_1_3 = "rbxassetid://9114704332"
-local AUDIO_VO_2_1 = "rbxassetid://9114704332" 
-local AUDIO_VO_2_2 = "rbxassetid://9114704332" 
-local AUDIO_RETURN_LAB = "rbxassetid://116952830538871"
-local AUDIO_VO_4_1 = "rbxassetid://0" -- 占位符
-
-local SelectedWeaponIndex = 0
-local WeaponData = {
-	[1] = { Name = "Knight's Sword", Desc = "Speed: Medium\nDamage: Balanced", Id = "Sword" },
-	[2] = { Name = "Heavy Axe",      Desc = "Speed: Slow\nDamage: High",     Id = "Axe" },
-	[3] = { Name = "Elven Bow",      Desc = "Speed: Fast\nDamage: Low",      Id = "Bow" }
-}
-
-local weaponConnections = {}
-local isSelecting = false
-local objective3Started = false 
-
--- ================= ✨ 特效 ✨ =================
-local blinkGui = nil 
-local function StartBlinkingE()
-	if not RootPart then return end
-	if blinkGui then blinkGui:Destroy() end
-	blinkGui = Instance.new("BillboardGui")
-	blinkGui.Name = "BlinkingE"
-	blinkGui.Size = UDim2.new(0, 50, 0, 50)
-	blinkGui.StudsOffset = Vector3.new(0, 3.5, 0)
-	blinkGui.AlwaysOnTop = true
-	blinkGui.Parent = RootPart
-
-	local textLabel = Instance.new("TextLabel")
-	textLabel.Size = UDim2.new(1,0,1,0)
-	textLabel.BackgroundTransparency = 1
-	textLabel.Text = "E"
-	textLabel.TextColor3 = Color3.fromRGB(255, 215, 0)
-	textLabel.TextStrokeTransparency = 0
-	textLabel.TextScaled = true
-	textLabel.Font = Enum.Font.GothamBlack
-	textLabel.Parent = blinkGui
-
-	local tweenInfo = TweenInfo.new(0.6, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true)
-	TweenService:Create(textLabel, tweenInfo, {TextTransparency = 0.7}):Play()
-end
-
-local function StopBlinkingE()
-	if blinkGui then blinkGui:Destroy() blinkGui = nil end
-end
-
-local zombieArrow = nil
 local function MarkZombie(zombieModel)
 	if not zombieModel then return end
-	if zombieArrow then zombieArrow:Destroy() end
-	zombieArrow = Instance.new("BillboardGui")
-	zombieArrow.Size = UDim2.new(0,60,0,60)
-	zombieArrow.StudsOffset = Vector3.new(0, 5, 0)
-	zombieArrow.AlwaysOnTop = true
-	zombieArrow.Parent = zombieModel.PrimaryPart or zombieModel:FindFirstChild("Head")
+	local arrow = Instance.new("BillboardGui")
+	arrow.Name = "ZombieArrow"
+	arrow.Size = UDim2.new(0,60,0,60)
+	arrow.StudsOffset = Vector3.new(0, 5, 0)
+	arrow.AlwaysOnTop = true
+	arrow.Parent = zombieModel.PrimaryPart or zombieModel:FindFirstChild("Head")
 
-	local img = Instance.new("ImageLabel", zombieArrow)
+	local img = Instance.new("ImageLabel", arrow)
 	img.Size, img.BackgroundTransparency = UDim2.new(1,0,1,0), 1
 	img.Image = "rbxassetid://6813296229" 
 	img.ImageColor3 = Color3.fromRGB(255, 50, 50)
 
 	local tInfo = TweenInfo.new(0.8, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true)
-	TweenService:Create(zombieArrow, tInfo, {StudsOffset = Vector3.new(0, 4, 0)}):Play()
+	TweenService:Create(arrow, tInfo, {StudsOffset = Vector3.new(0, 4, 0)}):Play()
 end
 
 local function ToggleHotbarArrow(state)
@@ -173,81 +177,34 @@ end
 
 local function PlayDialogue(text, audioId, pauseAfter, needClick)
 	local dFrame = GetUIElement("DialogueFrame")
-	if not dFrame then warn("UI丢失: DialogueFrame") return end
+	if not dFrame then return end
 
 	local dText = dFrame:FindFirstChild("ContentText")
 	local pIcon = dFrame:FindFirstChild("PromptIcon")
 
-	-- 强制修正位置
 	dFrame.Visible = true
 	dFrame.AnchorPoint = Vector2.new(0.5, 1)
 	dFrame.Position = UDim2.new(0.5, 0, 0.9, 0)
 
-	local fullText = "Battlemaster Dialogue Box：\n" .. text
-
 	if dText then
-		dText.Text = "" -- 清空文本，准备打字机效果
-		-- 强制修正文字位置
+		dText.Text = "Battlemaster Dialogue Box：\n" .. text
 		dText.AnchorPoint = Vector2.new(0.5, 0.5)
 		dText.Position = UDim2.new(0.5, 0, 0.5, 0)
 		dText.Size = UDim2.new(0.95, 0, 0.9, 0)
 		dText.TextXAlignment = Enum.TextXAlignment.Center
-		dText.TextYAlignment = Enum.TextYAlignment.Center
 	end
 
 	if pIcon then pIcon.Visible = false end
 
-	-- 播放音频
-	local duration = 0
-	if audioId then
+	if audioId and audioId ~= "rbxassetid://0" then
 		SoundPlayer.SoundId = audioId
 		if not SoundPlayer.IsLoaded then ContentProvider:PreloadAsync({SoundPlayer}) end
 		SoundPlayer:Play()
-		duration = SoundPlayer.TimeLength
-		if duration <= 0 then duration = 2 end
+		local duration = SoundPlayer.TimeLength
+		if duration > 0 then task.wait(duration) else task.wait(2) end
 	end
 
-	-- 监听点击跳过
-	local isSkipping = false
-	local skipConn
-	skipConn = UserInputService.InputBegan:Connect(function(input, gameProcessed)
-		if gameProcessed then return end
-		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-			isSkipping = true
-		end
-	end)
-
-	-- 1. 打字机效果
-	if dText then
-		for i = 1, #fullText do
-			if isSkipping then
-				dText.Text = fullText
-				break
-			end
-			dText.Text = string.sub(fullText, 1, i)
-			task.wait(0.03)
-		end
-	end
-
-	-- 重置跳过状态 (防止一次点击跳过所有阶段)
-	if isSkipping then
-		isSkipping = false
-		task.wait(0.1) 
-	end
-
-	-- 2. 等待音频/暂停 (支持跳过)
-	local totalWait = duration + pauseAfter
-	local timer = 0
-	while timer < totalWait do
-		if isSkipping then
-			if SoundPlayer.IsPlaying then SoundPlayer:Stop() end
-			break
-		end
-		local dt = task.wait()
-		timer = timer + dt
-	end
-
-	if skipConn then skipConn:Disconnect() end
+	if pauseAfter > 0 then task.wait(pauseAfter) end
 
 	if needClick and pIcon then
 		pIcon.Visible = true
@@ -267,7 +224,7 @@ end
 
 local function InitiateObjective3()
 	print(">>> 目标 #2 完成，进入过渡阶段 <<<")
-	PlayDialogue("Hello, example. Please return to your lab for instruction.", AUDIO_RETURN_LAB, 4, false)
+	PlayDialogue("Excellent work. Please return to the lab.", AUDIO_RETURN_LAB, 3, false)
 	task.wait(1)
 	TutorialEvent:FireServer("MoveToLab")
 
@@ -315,13 +272,13 @@ local function StartObjective2()
 
 	ToggleHotbarArrow(false)
 
-	PlayDialogue("Practice using your weapon on the Zombie we captured...", AUDIO_VO_2_2, 0, true)
+	PlayDialogue("Practice using your weapon on the Zombies...", AUDIO_VO_2_2, 0, true)
 	if dFrame then dFrame.Visible = false end
 
 	local objFrame = GetUIElement("ObjectiveFrame")
 	if objFrame then
 		local title = objFrame:FindFirstChild("Title")
-		if title then title.Text = "NEW OBJECTIVE\nKill and loot Zombie" end
+		if title then title.Text = "NEW OBJECTIVE\nEliminate Hostiles" end
 		objFrame.Visible = true
 	end
 
@@ -330,13 +287,12 @@ local function StartObjective2()
 	if ctrlFrame then ctrlFrame.Visible = true end
 end
 
--- ================= 修复：武器选择按钮逻辑 =================
+-- ================= 武器选择按钮逻辑 =================
 local function SetupWeaponButtons()
-	-- 重新获取 UI 引用 (防止 nil)
 	local WeaponFrame = GetUIElement("WeaponSelectionFrame")
 	if not WeaponFrame then warn("❌ UI 错误：找不到 WeaponSelectionFrame") return end
 
-	local InfoPanel = WeaponFrame:FindFirstChild("InfoPanel", true) -- 递归查找
+	local InfoPanel = WeaponFrame:FindFirstChild("InfoPanel", true)
 	if not InfoPanel then warn("❌ UI 错误：找不到 InfoPanel") return end
 
 	local StatsText = InfoPanel:FindFirstChild("StatsText")
@@ -351,7 +307,7 @@ local function SetupWeaponButtons()
 
 	-- 2. 绑定武器按钮
 	for i = 1, 3 do
-		local btn = WeaponFrame:FindFirstChild("Weapon"..i, true) -- 递归查找，确保能找到
+		local btn = WeaponFrame:FindFirstChild("Weapon"..i, true)
 		if btn and btn:IsA("GuiButton") then
 			btn.BorderSizePixel = 0
 			local conn = btn.MouseButton1Click:Connect(function()
@@ -359,7 +315,6 @@ local function SetupWeaponButtons()
 				SoundPlayer.SoundId = AUDIO_CLICK
 				SoundPlayer:Play()
 
-				-- UI 更新
 				for j = 1, 3 do
 					local other = WeaponFrame:FindFirstChild("Weapon"..j, true)
 					if other then other.BorderSizePixel = 0 end
@@ -374,8 +329,6 @@ local function SetupWeaponButtons()
 				end
 			end)
 			table.insert(weaponConnections, conn)
-		else
-			warn("⚠️ 警告：找不到 Weapon"..i.." 或者它不是按钮")
 		end
 	end
 
@@ -391,78 +344,54 @@ local function SetupWeaponButtons()
 
 			WeaponFrame.Visible = false
 			InfoPanel.Visible = false
+
 			TutorialEvent:FireServer("GiveWeapon", WeaponData[SelectedWeaponIndex].Id)
-
-			PlayDialogue("A fine weapon choice...", AUDIO_VO_1_3, 0, true)
-
-			local dFrame = GetUIElement("DialogueFrame")
-			if dFrame then dFrame.Visible = false end
-
 			StartObjective2()
 		end)
 		table.insert(weaponConnections, selectConn)
-	else
-		warn("❌ 错误：找不到 SelectButton")
 	end
 end
 
--- ================= 主流程 =================
+-- ================= 主流程 (无音频速通版) =================
 local function StartObjective1()
-	print("🚀 目标 #1 流程启动")
-	EnsureUI() -- 确保 UI 存在
+	print("🚀 目标 #1 流程启动 (无音频版)")
+	EnsureUI() 
 
-	if not TEST_MODE then
-		PlayDialogue("Welcome young exemplar...", AUDIO_VO_1_1, 3, false)
-		PlayDialogue("Your weapon defines your combat style...", AUDIO_VO_1_2, 0, true)
-		local dFrame = GetUIElement("DialogueFrame")
-		if dFrame then dFrame.Visible = false end
-		SoundPlayer:Stop()
-	end
+	task.wait(0.5)
 
-	local objFrame = GetUIElement("ObjectiveFrame")
-	if objFrame then
-		local title = objFrame:FindFirstChild("Title")
-		if title then title.Text = "NEW OBJECTIVE\nChoose Your Weapon" end
-		objFrame.Visible = true
-	end
+	local WeaponFrame = GetUIElement("WeaponSelectionFrame")
+	if WeaponFrame then
+		local objFrame = GetUIElement("ObjectiveFrame")
+		if objFrame then objFrame.Visible = false end
 
-	if ProximityPrompt then
-		ProximityPrompt.Enabled = true
-		StartBlinkingE()
-		print("✅ E 键高亮闪烁已激活")
+		WeaponFrame.Visible = true
+		SetupWeaponButtons()
+		print("✅ 已自动跳过对话，直接打开武器选择界面。")
+	else
+		warn("❌ 自动弹窗失败：找不到 WeaponSelectionFrame")
 	end
 end
 
 -- ================= 事件监听 =================
-if ProximityPrompt then
-	ProximityPrompt.Triggered:Connect(function()
-		local objFrame = GetUIElement("ObjectiveFrame")
-		if objFrame then objFrame.Visible = false end
-
-		ProximityPrompt.Enabled = false 
-		StopBlinkingE()
-
-		local WeaponFrame = GetUIElement("WeaponSelectionFrame")
-		if WeaponFrame then
-			WeaponFrame.Visible = true
-			SetupWeaponButtons() -- 现在这里很安全
-		else
-			warn("❌ 触发失败：WeaponSelectionFrame 不存在")
-		end
-	end)
-end
-
 TutorialEvent.OnClientEvent:Connect(function(action, data)
 	if action == "StartObjective1" then
 		StartObjective1()
+
 	elseif action == "MarkZombie" then
 		MarkZombie(data)
+
 	elseif action == "StartObjective4" then
 		StartObjective4()
+
 	elseif action == "LootPickedUp" then
-		lootCount = lootCount + 1
-		print("捡到了 " .. lootCount .. " 个物品")
-		if lootCount >= 5 and not objective3Started then
+		-- data 现在是物品名称 (String)
+		local itemName = data
+		ShowLootNotification(itemName)
+
+		lootCount = lootCount + 1 -- 【修复】变量现在已定义，不会报错
+		print("捡到了 " .. lootCount .. " / " .. TOTAL_LOOT_NEEDED .. " 个物品")
+
+		if lootCount >= TOTAL_LOOT_NEEDED and not objective3Started then
 			objective3Started = true
 			InitiateObjective3()
 		end

@@ -3,162 +3,225 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Workspace = game:GetService("Workspace")
 local ServerStorage = game:GetService("ServerStorage")
 local DataStoreService = game:GetService("DataStoreService")
+local Debris = game:GetService("Debris")
 
+-- 引入配置
+local GameConfig = require(ReplicatedStorage:WaitForChild("GameConfig"))
+
+-- 事件引用
 local TutorialEvent = ReplicatedStorage:WaitForChild("TutorialEvent")
 local StartLocation = Workspace:WaitForChild("TutorialStartLocation")
--- 使用 FindFirstChild 防止如果没有这个点导致脚本卡死
 local ZombieSpawnPoint = Workspace:FindFirstChild("ZombieSpawnPoint")
 
--- 安全获取 DataStore (防止未开启 API Access 导致脚本报错停止)
+-- [修复 1] 统一使用新的 DataStore 名称，与 PlayerDataSetup 保持一致
+local DATA_STORE_NAME = "Player_Data_V3_Exp" 
 local PlayerDataStore
 pcall(function()
-	PlayerDataStore = DataStoreService:GetDataStore("PlayerData_v1")
+	PlayerDataStore = DataStoreService:GetDataStore(DATA_STORE_NAME)
 end)
 
-if not PlayerDataStore then
-	warn("⚠️ 警告: DataStore 未加载。请在 Game Settings -> Security 中开启 'Enable Studio Access to API Services'，否则数据无法保存。")
-end
-
--- 玩家数据模拟 (XP 和 生物残渣)
 local PlayerStats = {} 
 
--- 1. 玩家加入
+-- =============================================
+-- 1. 玩家数据管理
+-- =============================================
 Players.PlayerAdded:Connect(function(player)
 	local success, savedData
-	-- 只有当 DataStore 成功加载时才尝试读取
 	if PlayerDataStore then
-		success, savedData = pcall(function()
-			return PlayerDataStore:GetAsync(tostring(player.UserId))
-		end)
+		success, savedData = pcall(function() return PlayerDataStore:GetAsync("User_"..player.UserId) end)
 	end
 
 	if success and savedData then
 		PlayerStats[player.UserId] = savedData
-		print("✅ 成功加载玩家数据")
+
+		-- [修复 2] 数据迁移保险：如果读取的是旧数据(无Exp)，强制初始化为0
+		if PlayerStats[player.UserId].Exp == nil then
+			PlayerStats[player.UserId].Exp = PlayerStats[player.UserId].XP or 0
+		end
+		-- 确保 LabInventory 存在
+		if PlayerStats[player.UserId].LabInventory == nil then
+			PlayerStats[player.UserId].LabInventory = {}
+		end
 	else
-		PlayerStats[player.UserId] = { XP = 0, BioMatter = 0, LabInventory = {} } -- 初始化数据
+		-- 初始化新数据
+		PlayerStats[player.UserId] = { Exp = 0, BioMatter = 0, LabInventory = {} }
 	end
 
-	player.CharacterAdded:Wait()
-	local character = player.Character
+	player.CharacterAdded:Connect(function(character)
+		task.wait(0.5)
+		if character.PrimaryPart then
+			character:SetPrimaryPartCFrame(StartLocation.CFrame)
+		else
+			character:MoveTo(StartLocation.Position)
+		end
+	end)
 
-	if character and character.PrimaryPart then
-		character:SetPrimaryPartCFrame(StartLocation.CFrame)
-	else
-		character:MoveTo(StartLocationwa.Position)
-	end
-
-	task.wait(1.5)
+	task.wait(2)
 	TutorialEvent:FireClient(player, "StartObjective1")
-	-- 初始 UI 更新
-	TutorialEvent:FireClient(player, "UpdateBioMatter", PlayerStats[player.UserId].BioMatter)
-	TutorialEvent:FireClient(player, "UpdateXP", PlayerStats[player.UserId].XP)
+	if PlayerStats[player.UserId] then
+		TutorialEvent:FireClient(player, "UpdateBioMatter", PlayerStats[player.UserId].BioMatter)
+		TutorialEvent:FireClient(player, "UpdateExp", PlayerStats[player.UserId].Exp)
+	end
 end)
 
--- 玩家离开时保存数据
 Players.PlayerRemoving:Connect(function(player)
-	local data = PlayerStats[player.UserId]
-	if data and PlayerDataStore then
-		pcall(function()
-			PlayerDataStore:SetAsync(tostring(player.UserId), data)
-		end)
-	end
+	-- [优化] MainGameLoop 不再负责保存，交给 PlayerDataSetup 统一保存，防止冲突
+	-- 这里只清理内存表
 	PlayerStats[player.UserId] = nil
 end)
 
--- 服务器关闭时保存所有数据 (防止数据丢失)
-game:BindToClose(function()
-	for _, player in ipairs(Players:GetPlayers()) do
-		local data = PlayerStats[player.UserId]
-		if data and PlayerDataStore then
-			pcall(function()
-				PlayerDataStore:SetAsync(tostring(player.UserId), data)
-			end)
-		end
-	end
-end)
-
--- 辅助函数：生成掉落物
-local function SpawnLoot(name, position, count, player)
+-- =============================================
+-- 2. 辅助函数：生成掉落物
+-- =============================================
+local function SpawnLoot(name, position, count, player, colorInfo)
 	local lootFolder = ServerStorage:FindFirstChild("LootItems")
 	local itemTemplate = lootFolder and lootFolder:FindFirstChild(name)
 
-	if not itemTemplate then 
-		warn("❌ 找不到掉落物模板："..name .. " (请检查 ServerStorage/LootItems)") 
-		return 
+	if not itemTemplate then
+		itemTemplate = Instance.new("Part")
+		itemTemplate.Name = name
+		itemTemplate.Size = Vector3.new(1, 1, 1)
+		itemTemplate.CanCollide = true
+		itemTemplate.Anchored = false
+		itemTemplate.Shape = Enum.PartType.Ball
 	end
 
 	for i = 1, count do
 		local loot = itemTemplate:Clone()
-		-- 随机散落在尸体周围
-		loot.Position = position + Vector3.new(math.random(-3,3), 2, math.random(-3,3))
+		loot.Position = position + Vector3.new(math.random(-3,3), 5, math.random(-3,3))
 		loot.Parent = workspace
 
-		-- 确保掉落物有物理碰撞，不会掉出世界
+		if colorInfo then
+			if typeof(colorInfo) == "Color3" then
+				loot.Color = colorInfo
+			elseif GameConfig.RarityColors and GameConfig.RarityColors[colorInfo] then
+				loot.Color = GameConfig.RarityColors[colorInfo]
+			elseif colorInfo == "Red" then
+				loot.Color = Color3.fromRGB(255, 50, 50)
+			elseif colorInfo == "Blue" then
+				loot.Color = Color3.fromRGB(0, 170, 255)
+			elseif colorInfo == "Green" then
+				loot.Color = Color3.fromRGB(75, 180, 75)
+			end
+		end
+
 		if loot:IsA("BasePart") then
 			loot.Anchored = false
 			loot.CanCollide = true
 		end
 
-		-- 添加拾取逻辑 (Touch)
-		local pickedUp = false
-		loot.Touched:Connect(function(hit)
-			if pickedUp then return end
-			local char = hit.Parent
-			local hitPlayer = Players:GetPlayerFromCharacter(char)
+		local prompt = Instance.new("ProximityPrompt")
+		prompt.ObjectText = "Loot"
+		prompt.ActionText = "Pick up " .. name
+		prompt.HoldDuration = 0
+		prompt.MaxActivationDistance = 10
+		prompt.Parent = loot
 
-			if hitPlayer == player then
-				pickedUp = true
-				print("📦 玩家捡起了: " .. name)
-
-				-- 存入实验台库存
-				table.insert(PlayerStats[player.UserId].LabInventory, name)
-
-				-- 检查背包或手中是否已有该物品 (用于堆叠)
-				local existingTool = player.Backpack:FindFirstChild(name)
-				if not existingTool and player.Character then
-					existingTool = player.Character:FindFirstChild(name)
+		prompt.Triggered:Connect(function(triggerPlayer)
+			if triggerPlayer == player then
+				if PlayerStats[player.UserId] then
+					table.insert(PlayerStats[player.UserId].LabInventory, name)
 				end
 
-				if existingTool then
-					-- 情况 A: 已有物品，进行堆叠
-					local currentStack = existingTool:GetAttribute("Stack") or 1
-					local newStack = currentStack + 1
-					existingTool:SetAttribute("Stack", newStack)
-					existingTool.ToolTip = name .. " x" .. newStack -- 更新鼠标悬停提示
-
-					loot:Destroy() -- 销毁地上的物体
-				else
-					-- 情况 B: 新物品，放入背包
-					local tool
-					if loot:IsA("Tool") then
-						tool = loot
-						tool.Parent = player.Backpack
-					else
-						-- 如果掉落物只是 Part，创建一个 Tool 容器放入背包
-						tool = Instance.new("Tool")
-						tool.Name = name
-						tool.RequiresHandle = false -- 不需要手持模型，仅作为物品栏图标
-						tool.Parent = player.Backpack
-
-						loot:Destroy()
-					end
-
-					-- 初始化堆叠数据
-					tool:SetAttribute("Stack", 1)
+				local backpack = player:FindFirstChild("Backpack")
+				if backpack then
+					local tool = Instance.new("Tool")
+					tool.Name = name
+					tool.RequiresHandle = false
+					tool.Parent = backpack
 					tool.ToolTip = name .. " x1"
 				end
 
-				-- 通知客户端拾取进度
-				TutorialEvent:FireClient(player, "LootPickedUp", 1) 
+				TutorialEvent:FireClient(player, "LootPickedUp", name)
+				loot:Destroy()
 			end
+		end)
+
+		Debris:AddItem(loot, 60)
+	end
+end
+
+-- =============================================
+-- 3. 辅助函数：生成指定僵尸
+-- =============================================
+local function SpawnSpecificZombie(player, zombieType, offset)
+	local config = GameConfig.Mobs[zombieType]
+	if not config then 
+		warn("❌ GameConfig 中找不到怪物配置: " .. tostring(zombieType))
+		return 
+	end
+
+	local enemyFolder = ServerStorage:FindFirstChild("Enemies")
+	local zombieTemplate = enemyFolder and enemyFolder:FindFirstChild("EliteZombie")
+
+	if zombieTemplate then
+		local zombie = zombieTemplate:Clone()
+		zombie.Name = config.Name
+		zombie.Parent = workspace
+
+		if player.Character then
+			local pivot = player.Character:GetPivot()
+			zombie:PivotTo(pivot * CFrame.new(offset, 0, -20))
+		end
+
+		local humanoid = zombie:WaitForChild("Humanoid")
+		humanoid.MaxHealth = config.HP
+		humanoid.Health = config.HP
+
+		if config.OutlineColor then
+			local hl = Instance.new("Highlight")
+			hl.FillTransparency = 1
+			hl.OutlineColor = config.OutlineColor
+			hl.Parent = zombie
+		end
+
+		TutorialEvent:FireClient(player, "MarkZombie", zombie)
+
+		humanoid.Died:Connect(function()
+			print("💀 " .. config.Name .. " 已死亡")
+
+			-- [修复 3] 使用 (config.XP or 0) 防止配置缺失报错
+			local xpReward = config.XP or 0
+			local bioReward = config.BioMatterDrop or 0
+
+			-- 更新内存数据
+			if PlayerStats[player.UserId] then
+				local stats = PlayerStats[player.UserId]
+				-- 确保 stats.Exp 不是 nil
+				stats.Exp = (stats.Exp or 0) + xpReward
+				stats.BioMatter = (stats.BioMatter or 0) + bioReward
+
+				TutorialEvent:FireClient(player, "UpdateBioMatter", stats.BioMatter)
+				TutorialEvent:FireClient(player, "UpdateExp", stats.Exp)
+			end
+
+			-- 同步更新 Leaderstats
+			local leaderstats = player:FindFirstChild("leaderstats")
+			if leaderstats then
+				local bioVal = leaderstats:FindFirstChild("Biomass")
+				if bioVal then bioVal.Value = bioVal.Value + bioReward end
+
+				local expVal = leaderstats:FindFirstChild("Exp")
+				if expVal then expVal.Value = expVal.Value + xpReward end
+			end
+
+			-- 生成掉落物
+			local dropPos = zombie:GetPivot().Position
+			if config.Drops then
+				for _, dropData in ipairs(config.Drops) do
+					SpawnLoot(dropData.ItemName, dropPos, dropData.Amount, player, dropData.Rarity or dropData.Color)
+				end
+			end
+
+			Debris:AddItem(zombie, 5)
 		end)
 	end
 end
 
--- 2. 事件监听
+-- =============================================
+-- 4. 事件监听
+-- =============================================
 TutorialEvent.OnServerEvent:Connect(function(player, action, data)
-	-- 发武器 (Objective 1)
 	if action == "GiveWeapon" then
 		local weaponFolder = ServerStorage:FindFirstChild("WeaponTools")
 		if weaponFolder then
@@ -169,66 +232,14 @@ TutorialEvent.OnServerEvent:Connect(function(player, action, data)
 			end
 		end
 
-		-- 生成僵尸 (Objective 2)
 	elseif action == "SpawnZombie" then
-		print("🧟 服务器：正在生成精英僵尸...")
-
-		if not ZombieSpawnPoint then
-			warn("❌ 错误：Workspace 里没有 ZombieSpawnPoint，无法定位僵尸位置")
-			return
-		end
-
-		local enemyFolder = ServerStorage:FindFirstChild("Enemies")
-		local zombieTemplate = enemyFolder and enemyFolder:FindFirstChild("EliteZombie")
-
-		if zombieTemplate then
-			local zombie = zombieTemplate:Clone()
-			zombie.Parent = workspace
-
-			-- 🛑 自动修复 PrimaryPart (防止移动报错)
-			if not zombie.PrimaryPart then
-				local root = zombie:FindFirstChild("HumanoidRootPart") or zombie:FindFirstChild("Torso") or zombie:FindFirstChild("Head")
-				if root then zombie.PrimaryPart = root end
-			end
-
-			-- 移动僵尸
-			if zombie.PrimaryPart then
-				zombie:SetPrimaryPartCFrame(ZombieSpawnPoint.CFrame)
-			else
-				zombie:MoveTo(ZombieSpawnPoint.Position)
-			end
-
-			-- 通知客户端标记这个僵尸 (加箭头)
-			TutorialEvent:FireClient(player, "MarkZombie", zombie)
-
-			-- 监听僵尸死亡
-			local humanoid = zombie:FindFirstChild("Humanoid")
-			if humanoid then
-				humanoid.Died:Connect(function()
-					print("💀 僵尸已死亡！发放奖励...")
-
-					-- 1. 加 XP 和 生物残渣
-					local stats = PlayerStats[player.UserId]
-					stats.XP = stats.XP + 300
-					stats.BioMatter = stats.BioMatter + 3
-					print("玩家获得 300 XP, 当前总量: " .. stats.XP)
-
-					-- 更新客户端 UI
-					TutorialEvent:FireClient(player, "UpdateBioMatter", stats.BioMatter)
-					TutorialEvent:FireClient(player, "UpdateXP", stats.XP)
-
-					-- 2. 掉落物品 (🛑 修复点：使用更安全的方式获取位置)
-					local dropPos = zombie:GetPivot().Position -- 这样写无论有没有RootPart都能找到位置
-
-					SpawnLoot("CommonExtract", dropPos, 3, player) -- 3个普通
-					SpawnLoot("RareExtract", dropPos, 2, player)   -- 2个罕见
-
-					-- 3. 清理尸体 (延迟)
-					game:GetService("Debris"):AddItem(zombie, 5)
-				end)
-			end
+		print("🧟 服务器：正在生成僵尸波次...")
+		if not ZombieSpawnPoint then 
+			SpawnSpecificZombie(player, "Normal Zombie", -6)
+			SpawnSpecificZombie(player, "Elite Zombie", 6)
 		else
-			warn("❌ 错误：ServerStorage/Enemies 里没找到 EliteZombie 模型！")
+			SpawnSpecificZombie(player, "Normal Zombie", -6)
+			SpawnSpecificZombie(player, "Elite Zombie", 6)
 		end
 	end
 end)
