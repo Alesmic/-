@@ -2,11 +2,14 @@
 setlocal EnableExtensions EnableDelayedExpansion
 
 :: =========================================================
-::  GIT AUTOMATION - CLASSIC FIXED
-::  ×¢²á¸ø: xyhyxu
+::  GIT è‡ªåŠ¨åŒ–å·¥å…· - ä¸­æ–‡å®Œç¾Žæ”¯æŒç‰ˆ (UTF-8)
+::  ä¿®å¤äº†ä¸­æ–‡å¤‡æ³¨ä¹±ç é—®é¢˜
 :: =========================================================
 
-:: 1. Éú³ÉÑÕÉ«´úÂë
+:: 1. å¼ºåˆ¶åˆ‡æ¢åˆ° UTF-8 ç¼–ç  (è§£å†³ Git ä¸­æ–‡ä¹±ç çš„æ ¸å¿ƒ)
+chcp 65001 >nul
+
+:: 2. ç”Ÿæˆé¢œè‰²ä»£ç 
 for /F "tokens=1,2 delims=#" %%a in ('"prompt #$H#$E# & echo on & for %%b in (1) do rem"') do (
   set "ESC=%%b"
 )
@@ -20,12 +23,12 @@ set "GREEN=%ESC%[32m"
 set "RED=%ESC%[31m"
 set "BLUE=%ESC%[34m"
 
-:: ÉèÖÃ´°¿Ú
-title Git Pro [CN] - Powered by xyhyxu
+:: è®¾ç½®çª—å£
+title Git Pro [CN] - UTF8 Mode
 mode con: cols=90 lines=30
 
 :: ---------------------------------------------------------
-:: 2. ¾­µä ASCII ÒÕÊõ×Ö½çÃæ (µÚÒ»°æ·ç¸ñ)
+:: 3. ç»å…¸ç•Œé¢
 :: ---------------------------------------------------------
 cls
 echo.
@@ -35,48 +38,43 @@ echo  %CYAN%%BOLD%  \ \ \__ \\ \ \\/_/\ \/    \ \  __ \\ \ \/\ \\/_/\ \/    %RES
 echo  %CYAN%%BOLD%   \ \_____\\ \_\  \ \_\     \ \_\ \_\\ \_____\  \ \_\    %RESET%
 echo  %CYAN%%BOLD%    \/_____/ \/_/   \/_/      \/_/\/_/  \/_____/   \/_/    %RESET%
 echo.
-:: ¨‹¨‹¨‹¨‹¨‹¨‹¨‹¨‹¨‹¨‹¨‹¨‹¨‹¨‹¨‹ ÐÞ¸´µã£º¸ø¼ýÍ·¼ÓÁË ^ ·ûºÅ ¨‹¨‹¨‹¨‹¨‹¨‹¨‹¨‹¨‹¨‹¨‹¨‹¨‹¨‹¨‹
-echo          %YELLOW%^>^>^>  ×Ô ¶¯ »¯ °æ ±¾ ¿Ø ÖÆ Ïµ Í³  ^<^<^<%RESET%
-:: ¡ø¡ø¡ø¡ø¡ø¡ø¡ø¡ø¡ø¡ø¡ø¡ø¡ø¡ø¡ø¡ø¡ø¡ø¡ø¡ø¡ø¡ø¡ø¡ø¡ø¡ø¡ø¡ø¡ø¡ø¡ø¡ø¡ø¡ø¡ø¡ø¡ø¡ø¡ø¡ø¡ø¡ø¡ø¡ø¡ø¡ø¡ø¡ø¡ø¡ø¡ø¡ø¡ø¡ø
+echo          %YELLOW%^^^>^^^>  è‡ª åŠ¨ åŒ– ç‰ˆ æœ¬ æŽ§ åˆ¶ ç³» ç»Ÿ  ^^^<^^^<%RESET%
 echo.
 echo          %MAGENTA%Dev and Design by: xyhyxu%RESET%
 echo.
 
-:: Ä£Äâ¼ÓÔØ
-<nul set /p "=%BLUE%   Loading Modules: %RESET%"
-for /L %%i in (1,1,25) do (
-    <nul set /p "=%CYAN%#%RESET%"
-    for /L %%j in (1,1,100) do rem
-)
-echo  %GREEN% [OK]%RESET%
+echo  %BLUE%   [ç³»ç»Ÿåˆå§‹åŒ–] æ­£åœ¨åŠ è½½æ¨¡å—...%RESET%
+:: ä½¿ç”¨ ping åšå»¶æ—¶ï¼Œå…¼å®¹æ€§æœ€å¥½
+ping 127.0.0.1 -n 2 >nul
+echo  %GREEN%   [OK] å°±ç»ª%RESET%
 echo.
 
 :: ---------------------------------------------------------
-:: 3. »·¾³¼ì²é
+:: 4. çŽ¯å¢ƒæ£€æŸ¥
 :: ---------------------------------------------------------
 where git >nul 2>nul
 if %errorlevel% neq 0 (
-    echo  %RED%[´íÎó] Î´ÕÒµ½ Git ÃüÁî£¡%RESET%
+    echo  %RED%[é”™è¯¯] æœªæ‰¾åˆ° Git å‘½ä»¤ï¼%RESET%
     pause
     exit /b
 )
 
 if not exist .git (
-    echo  %RED%[´íÎó] µ±Ç°Ä¿Â¼²»ÊÇ Git ²Ö¿â¡£%RESET%
+    echo  %RED%[é”™è¯¯] å½“å‰ç›®å½•ä¸æ˜¯ Git ä»“åº“ã€‚%RESET%
     pause
     exit /b
 )
 
 :: ---------------------------------------------------------
-:: 4. ×´Ì¬É¨Ãè
+:: 5. çŠ¶æ€æ‰«æ
 :: ---------------------------------------------------------
-echo  %BLUE%[%time:~0,8%]%RESET% %BOLD%ÕýÔÚÉ¨Ãè¹¤×÷Çø...%RESET%
+echo  %BLUE%[%time:~0,8%]%RESET% %BOLD%æ­£åœ¨æ‰«æå·¥ä½œåŒº...%RESET%
 
-:: »ñÈ¡·ÖÖ§
+:: èŽ·å–åˆ†æ”¯
 for /f "tokens=*" %%i in ('git branch --show-current') do set "BRANCH=%%i"
-echo  %CYAN%[ÐÅÏ¢]%RESET% µ±Ç°·ÖÖ§: %GREEN%!BRANCH!%RESET%
+echo  %CYAN%[ä¿¡æ¯]%RESET% å½“å‰åˆ†æ”¯: %GREEN%!BRANCH!%RESET%
 
-:: ¼ì²â±ä¶¯
+:: æ£€æµ‹å˜åŠ¨
 set "HAS_CHANGES=0"
 for /f "delims=" %%i in ('git status --short') do set "HAS_CHANGES=1"
 
@@ -84,15 +82,15 @@ if "!HAS_CHANGES!"=="1" goto :FoundChanges
 goto :NoChanges
 
 :FoundChanges
-    echo  %CYAN%[ÐÅÏ¢]%RESET% ¼ì²âµ½ÎÄ¼þ±ä¶¯£¬×¼±¸Ìá½»...
+    echo  %CYAN%[ä¿¡æ¯]%RESET% æ£€æµ‹åˆ°æ–‡ä»¶å˜åŠ¨ï¼Œå‡†å¤‡æäº¤...
     echo.
     echo  %MAGENTA%==================================================================%RESET%
-    echo   ÕýÔÚÖ´ÐÐ: git add .
+    echo   æ­£åœ¨æ‰§è¡Œ: git add .
     echo  %MAGENTA%==================================================================%RESET%
     git add .
     
     echo.
-    echo  %YELLOW% ÇëÊäÈëÌá½»±¸×¢ (Message):%RESET%
+    echo  %YELLOW% è¯·è¾“å…¥æäº¤å¤‡æ³¨ (ä¸­æ–‡/è‹±æ–‡å‡å¯):%RESET%
     echo  %MAGENTA%==================================================================%RESET%
     set "MSG="
     set /p "MSG=%CYAN% > %RESET%"
@@ -100,21 +98,23 @@ goto :NoChanges
     if "!MSG!"=="" set "MSG=Update by xyhyxu [%date%]"
     
     echo.
-    echo  %BLUE%[%time:~0,8%]%RESET% %BOLD%ÕýÔÚÌá½» (Commit)...%RESET%
+    :: å†æ¬¡ç¡®è®¤ç¼–ç ï¼Œé˜²æ­¢è¾“å…¥æ³•å¹²æ‰°
+    chcp 65001 >nul
+    echo  %BLUE%[%time:~0,8%]%RESET% %BOLD%æ­£åœ¨æäº¤: "!MSG!"%RESET%
     git commit -m "!MSG!"
     goto :CheckPush
 
 :NoChanges
     echo.
-    echo  %GREEN%[OK] ¹¤×÷ÇøºÜ¸É¾»£¬Ã»ÓÐÐÂÎÄ¼þ¡£%RESET%
+    echo  %GREEN%[OK] å·¥ä½œåŒºå¾ˆå¹²å‡€ï¼Œæ²¡æœ‰æ–°æ–‡ä»¶ã€‚%RESET%
     goto :CheckPush
 
 :: ---------------------------------------------------------
-:: 5. ÍÆËÍ¼ì²é
+:: 6. æŽ¨é€æ£€æŸ¥
 :: ---------------------------------------------------------
 :CheckPush
 echo.
-echo  %BLUE%[%time:~0,8%]%RESET% %BOLD%¼ì²éÔ¶³ÌÍ¬²½×´Ì¬...%RESET%
+echo  %BLUE%[%time:~0,8%]%RESET% %BOLD%æ£€æŸ¥è¿œç¨‹åŒæ­¥çŠ¶æ€...%RESET%
 
 git status | findstr "ahead" >nul
 if %errorlevel% equ 0 goto :NeedPush
@@ -122,41 +122,41 @@ goto :UpToDate
 
 :NeedPush
     echo.
-    echo  %RED%[ÌáÐÑ] ±¾µØÓÐ´úÂëÉÐÎ´ÍÆËÍµ½·þÎñÆ÷£¡%RESET%
+    echo  %RED%[æé†’] æœ¬åœ°æœ‰ä»£ç å°šæœªæŽ¨é€åˆ°æœåŠ¡å™¨ï¼%RESET%
     echo.
     echo  %MAGENTA%------------------------------------------------------------------%RESET%
     set "PUSH_CHOICE="
-    set /p "PUSH_CHOICE=%YELLOW%[²Ù×÷] ÊÇ·ñÁ¢¼´ÍÆËÍ? (ÊäÈë Y È·ÈÏ): %RESET%"
+    set /p "PUSH_CHOICE=%YELLOW%[æ“ä½œ] æ˜¯å¦ç«‹å³æŽ¨é€? (è¾“å…¥ Y ç¡®è®¤): %RESET%"
     
     if /i "!PUSH_CHOICE!"=="y" (
         echo.
-        echo  %BLUE%[%time:~0,8%]%RESET% %BOLD%ÕýÔÚÍÆËÍ (git push)...%RESET%
+        echo  %BLUE%[%time:~0,8%]%RESET% %BOLD%æ­£åœ¨æŽ¨é€ (git push)...%RESET%
         git push
         
         if !errorlevel! equ 0 (
             echo.
-            echo  %GREEN%[³É¹¦] ´úÂëÒÑ³É¹¦Í¬²½µ½Ô¶³Ì²Ö¿â£¡%RESET%
+            echo  %GREEN%[æˆåŠŸ] ä»£ç å·²æˆåŠŸåŒæ­¥åˆ°è¿œç¨‹ä»“åº“ï¼%RESET%
         ) else (
             echo.
-            echo  %RED%[Ê§°Ü] ÍÆËÍ³ö´íÁË£¬Çë¼ì²éÍøÂç¡£%RESET%
+            echo  %RED%[å¤±è´¥] æŽ¨é€å‡ºé”™äº†ï¼Œè¯·æ£€æŸ¥ç½‘ç»œã€‚%RESET%
         )
     ) else (
-        echo  [ÐÅÏ¢] ÒÑÌø¹ýÍÆËÍ¡£
+        echo  [ä¿¡æ¯] å·²è·³è¿‡æŽ¨é€ã€‚
     )
     goto :End
 
 :UpToDate
-    echo  %GREEN%[OK] ´úÂëÒÑÊÇ×îÐÂ£¬ÎÞÐèÍÆËÍ¡£%RESET%
+    echo  %GREEN%[OK] ä»£ç å·²æ˜¯æœ€æ–°ï¼Œæ— éœ€æŽ¨é€ã€‚%RESET%
     goto :End
 
 :: ---------------------------------------------------------
-:: 6. ½áÊø
+:: 7. ç»“æŸ
 :: ---------------------------------------------------------
 :End
 echo.
 echo  %MAGENTA%==================================================================%RESET%
-echo  %GREEN%               ²Ù×÷Íê³É£¬¸ÐÐ»Ê¹ÓÃ Git Auto Tool                   %RESET%
+echo  %GREEN%               æ“ä½œå®Œæˆï¼Œæ„Ÿè°¢ä½¿ç”¨ Git Auto Tool                   %RESET%
 echo  %MAGENTA%==================================================================%RESET%
 echo.
-echo  °´ÈÎÒâ¼üÍË³ö...
+echo  æŒ‰ä»»æ„é”®é€€å‡º...
 pause >nul
