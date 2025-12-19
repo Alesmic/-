@@ -46,40 +46,4 @@ GameConfig.Mobs = {
 	}
 }
 
--- 定义僵尸类型
-GameConfig.Zombies = {
-	Normal = {
-		Name = "Normal Zombie",
-		HP = 50,
-		XP = 50,
-		OutlineColor = Color3.fromRGB(0, 100, 255), -- 蓝色描边
-		Scale = 1.0,
-		Drops = {
-			{Name = "CommonExtract", Color = "Blue", Count = 2},  -- 掉2个蓝色
-			{Name = "RareExtract",   Color = "Green", Count = 1}, -- 掉1个绿色
-		}
-	},
-	Elite = {
-		Name = "Elite Zombie",
-		HP = 150,
-		XP = 300,
-		OutlineColor = Color3.fromRGB(255, 0, 0), -- 红色描边
-		Scale = 1.2, -- 精英怪稍微大一点
-		Drops = {
-			{Name = "Biomass", Color = "Red", Count = 2} -- 掉2个红色生物质
-		}
-	}
-}
-
--- 计算总共需要捡多少个物品才能通关 (自动计算)
-function GameConfig.GetTotalLootCount()
-	local total = 0
-	for _, data in pairs(GameConfig.Zombies) do
-		for _, drop in ipairs(data.Drops) do
-			total = total + drop.Count
-		end
-	end
-	return total
-end
-
 return GameConfig

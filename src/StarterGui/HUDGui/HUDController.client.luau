@@ -3,6 +3,7 @@ local Players = game:GetService("Players")
 local TweenService = game:GetService("TweenService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
+local TutorialEvent = ReplicatedStorage:WaitForChild("TutorialEvent")
 local player = Players.LocalPlayer
 local gui = script.Parent -- 获取 HUDGui
 
@@ -10,11 +11,11 @@ local gui = script.Parent -- 获取 HUDGui
 -- 1. 获取 UI 引用 (根据你的结构)
 -- ==========================================
 -- 确保这些 Frame 都在 HUDGui 下面
-local moneyFrame = gui:WaitForChild("MoneyFrame")
-local moneyText = moneyFrame:WaitForChild("ValueText") -- 假设显示文字的 Label 叫 ValueText
-
 local expFrame = gui:WaitForChild("ExpFrame")
 local expText = expFrame:WaitForChild("ValueText")
+
+local biomassFrame = gui:WaitForChild("BiomassFrame")
+local biomassText = biomassFrame:WaitForChild("ValueText")
 
 -- 尝试获取血条 (如果没做，脚本会自动创建临时的以免报错，但建议你手动做好)
 local healthFrame = gui:FindFirstChild("HealthFrame")
@@ -67,36 +68,6 @@ local function updateHealth()
 	end
 end
 
--- 更新金钱和经验 (监听 leaderstats)
-local function updateStats()
-	local leaderstats = player:FindFirstChild("leaderstats")
-	if not leaderstats then return end
-
-	-- 获取数据对象
-	local moneyObj = leaderstats:FindFirstChild("Money") or leaderstats:FindFirstChild("BioMatter") -- 兼容你的变量名
-	local expObj = leaderstats:FindFirstChild("XP") or leaderstats:FindFirstChild("Experience")
-	local levelObj = leaderstats:FindFirstChild("Level") -- 假设有等级
-
-	-- 1. 更新金钱
-	if moneyObj then
-		moneyText.Text = "Money: " .. moneyObj.Value
-	else
-		moneyText.Text = "Money: --"
-	end
-
-	-- 2. 更新经验
-	-- 这里根据你的需求，如果只想显示数字：
-	if expObj then
-		local val = expObj.Value
-		-- 如果有等级，一起显示
-		if levelObj then
-			expText.Text = "Level " .. levelObj.Value .. " | Exp: " .. val
-		else
-			expText.Text = "Exp: " .. val
-		end
-	end
-end
-
 -- ==========================================
 -- 3. 事件监听
 -- ==========================================
@@ -120,16 +91,11 @@ if player.Character then
 	end
 end
 
--- 监听数据变化 (Money / Exp)
-task.spawn(function()
-	local leaderstats = player:WaitForChild("leaderstats", 999)
-	if not leaderstats then return end
-
-	-- 监听所有子对象的变化
-	for _, stat in pairs(leaderstats:GetChildren()) do
-		stat.Changed:Connect(updateStats)
+-- 监听服务器事件 (BioMatter 更新)
+TutorialEvent.OnClientEvent:Connect(function(action, data)
+	if action == "UpdateBioMatter" then
+		biomassText.Text = tostring(data)
+	elseif action == "UpdateXP" then
+		expText.Text = "Exp: " .. tostring(data)
 	end
-
-	-- 初始更新一次
-	updateStats()
 end)
